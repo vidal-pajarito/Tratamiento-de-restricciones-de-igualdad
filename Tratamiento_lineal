@@ -1,0 +1,162 @@
+%%  tratamiento_lineal(M, M_EX)
+tratamiento_lineal(M, ML_EXT) :-
+    generador_esquema_lineal_comun(M, [], ECL), var(T),
+    extender_clausulas_lineales(ECL, M, T-T, ML_EXT), !.
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%      Bloque Optimizacion Generación-Combinacion Lineal		%%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	generador_esquema_lineal_comun(LCT, N, ECL, ECL_R, LENL, LENL_R).
+%       -LCT: Lista de Conjuntos de terminos (clausulas de la matriz resuelta) pendientes de procesar
+%       -ECL: Esquema de Conjunto lineal de esta etapa, resultante del procesado de las clausulas lineales tratadas hasta ahora
+%       -ECL_R: Esquema de Conjunto Lineal resultado, resultante del procesado de todas las clausulas lineales de la matriz resuelta
+
+generador_esquema_lineal_comun([], ECL, ECL) :- !.
+
+generador_esquema_lineal_comun([CT | LCT], [], ECL_R) :- 
+    !, maplist(generador_esquema_termino_lineal, CT, ECL),
+    generador_esquema_lineal_comun(LCT, ECL, ECL_R).
+
+generador_esquema_lineal_comun([CT | LCT], ECL, ECL_R) :- 
+    maplist(combinar_esquemas_lineales_incremental, CT, ECL, NECL), 
+    generador_esquema_lineal_comun(LCT, NECL, ECL_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  combinar_esquemas_lineales_incremental(T, E, ER)
+%       -T: Termino a combinar
+%       -E: Esquema a combinar
+%       -ER: Esquema resultante
+combinar_esquemas_lineales_incremental(T, E, ER) :- 
+    var(E), !, generador_esquema_termino_lineal(T, ER).
+
+combinar_esquemas_lineales_incremental(T, EL, EL) :-
+    var(T), !.
+
+combinar_esquemas_lineales_incremental(T, EL, EL) :-
+    T=..[T], !.
+
+combinar_esquemas_lineales_incremental(T, M:EL_P, M:EL_R) :-
+    T=..[_ | L], length(L, N), M > N, !, append(L, _, L_EXT), length(L_EXT, M), !,
+    maplist(combinar_esquemas_lineales_incremental, L_EXT, EL_P, EL_R).
+
+combinar_esquemas_lineales_incremental(T, _:EL_P, N:EL_R) :-
+    T=..[_ | L], length(L, N), append(EL_P, _, EL_P_EXT), length(EL_P_EXT, N), !,
+    maplist(combinar_esquemas_lineales_incremental, L, EL_P_EXT, EL_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	generador_esquema_termino_lineal(+T, -E).
+%       -Lista de Variables Repetidas del conjunto de terinos original
+%		-Termino
+%		-Esquema
+
+generador_esquema_termino_lineal(T, 0:[]) :- 
+    var(T), !.
+
+generador_esquema_termino_lineal(T, N:LSE) :- 
+    T=..[_|LT], length(LT, N), 
+    maplist(generador_esquema_termino_lineal, LT, LSE).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%  			        BLOQUE DE EXTENSION			            %%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  extender_clausulas_lineales(ELC, M, ML, ML_R).
+
+extender_clausulas_lineales(ELC, [], ML_R_, (ML_R, ELC)) :- !, 
+    conversor_lista_diferencia(ML_R_, ML_R).
+
+extender_clausulas_lineales(ELC, [C | M], ML, ML_R) :- 
+    maplist(extender_termino_lineal, ELC, C, C_EXT_), flatten(C_EXT_, C_EXT),
+    add_last_lista_diferencia(ML, C_EXT, N_ML),
+    extender_clausulas_lineales(ELC, M, N_ML, ML_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  extender_termino_lineal(E, T, TEX)
+
+
+extender_termino_lineal(_:LE, T, [T | E_EXT]) :-
+    var(T), !, 
+    maplist(extension_esquema, LE, E_EXT).
+
+extender_termino_lineal(N:LE, T, [F | T_EXT]) :-
+    T=..[F|LT], length(LT, M), M < N, !,
+    
+    length(MLE, M), append(MLE, NLE, LE),
+
+    maplist(extender_termino_lineal, MLE, LT, LT_EXT),
+
+    maplist(extension_esquema, NLE, LE_EXT),
+
+    append(LT_EXT, LE_EXT, T_EXT).
+
+extender_termino_lineal(_:LE, T, [F|T_EXT]) :-
+    T=..[F|LT], 
+    maplist(extender_termino_lineal, LE, LT, T_EXT).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+extension_esquema(E, E_EXT) :-    
+    size(E, S), length(E_EXT, S).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%				Bloque Herramientas Generalales					%%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  size(+E, -SR): SR es el tamaño del esquema E, SE .
+size(E, SR) :- 
+    size_inmersion(E, 0, SR).
+
+size_inmersion(V, SE, SR) :- 
+    var(V), !, SR is SE + 1.
+
+size_inmersion(_:[], SE, SR) :- 
+    !, SR is SE + 1.
+
+size_inmersion(A:[H|LE], SE, SR):- 
+    size_inmersion(H, SE, SI),
+    size_inmersion(A:LE, SI, SR).
+
+
+% inicializar_lista_dif(-LD): Devuelve una lista diferencia inicializada como vacia.
+inicializar_lista_dif(T-T).
+
+%%  % aniadir_elemento(+LD, +E, -NLD): Añade un elemento como cola de una lista diferencia dada
+%       -LD es una lista diferencia existente.
+%       -E es el elemento a añadir.
+%       -NLD es la nueva lista diferencia resultante.
+add_last_lista_diferencia(L-T, E, L-NT) :-
+    T = [E | NT].
+
+%%  conversor_lista_diferencia(+LD, -L): Convierte la lista diferencia dada en una lista normal
+conversor_lista_diferencia(L-T, L) :-
+    T = [].
+
+conversor_lista_diferencia_((E, _), L-T, (L, E)) :-
+    T = [].
