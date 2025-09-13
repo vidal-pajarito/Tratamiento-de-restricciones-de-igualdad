@@ -201,28 +201,27 @@ analizar_dependencias(LV, LCD, LD, LCDR) :-
     maplist(auto_dependencia, LD),
 
     %%  Procesamos la lista de dependencias con la regla 1
-    llamada_1(LV, LCD, LD, LCD_R1),
+    aplicar_regla_1(LV, LCD, LD, LCD_R1),
 
     %%  Una vez se han procesado, volvemos a aplicar la regla 2 de ser posible
     procesar_regla_R2(LV, LCD_R1, NLD),
 
     %%  Lanzamos la comprobacion con la llamada recursiva
-    %llamada_2(LV, LCD_R1, NLD, LCDR).
     analizar_dependencias(LV, LCD_R1, NLD, LCDR).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%  llamada_1(LV, LCD, LD, LCDR).
+%%  aplicar_regla_1(LV, LCD, LD, LCDR).
 %       -LV: Lista Variables
 %       -LCD: Lista de conjunstos de dependencias
 %       -LD: Lista de dependencais a procesar
 %       -LCDR: Lista de conjunstos de dependencias resultado
-llamada_1(_, LCD, [], LCD) :- !.
+aplicar_regla_1(_, LCD, [], LCD) :- !.
 
-llamada_1(_, LCD, LD, LCD) :- %maplist(auto_dependencia, LD),
+aplicar_regla_1(_, LCD, LD, LCD) :- %maplist(auto_dependencia, LD),
     maplist(aparece_dependencia_LCD(LCD), LD), !.
 
-llamada_1(LV, LCD, LD, LCDR) :-
+aplicar_regla_1(LV, LCD, LD, LCDR) :-
     
     %%  Analisis de si las dependencias nuevas son o no "finitas"
     maplist(auto_dependencia, LD),
@@ -238,7 +237,7 @@ llamada_1(LV, LCD, LD, LCDR) :-
     %%  Combinas Todas las listas de conjuntos de dependencias
     append(NLCD_1, NLCD_2, NLCD), append(NLD_1, NLD_2, NLD),
     flatten(NLD, NLDF),
-    llamada_1(LV, NLCD, NLDF, LCDR).
+    aplicar_regla_1(LV, NLCD, NLDF, LCDR).
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -638,11 +637,6 @@ obtener_variables_que_se_repitan(E, LV) :-
 diferencia([], _, []) :- !.
 diferencia([H|T], L, [H|R]) :- no_aparece(H, L), !, diferencia(T, L, R).
 diferencia([_|T], L, R) :-  diferencia(T, L, R).
-
-%%	purgar(-L, NL): NL es la lista L eliminando todas las apariciones de listas vacias ("[]") que haya de esta.
-purgar([],[]).
-purgar([[]|L], NL) :- !, purgar(L, NL).
-purgar([H|L],[H|NL]) :- purgar(L, NL).
 
 
 %%  size(+E, -SR): SR es el tamaño del esquema E, SE .
