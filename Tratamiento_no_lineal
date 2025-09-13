@@ -1,0 +1,688 @@
+%%  tratamiento_completo(M, M_EX)
+tratamiento_completo(M, ML_EXT, MNL_EXT) :-
+    generador_esquema_lineal_y_esquemas_no_lineales(M, [], ELC, [], L_E_NL),
+    particionar_esquemas_no_lineales(L_E_NL, [], L_P_NL),
+    length(L_P_NL, N), length(MNL_B, N), maplist(inicializar_lista_dif, MNL_B), var(T),
+    extender_clausulas(ELC, L_P_NL, M, T-T, ML_EXT, MNL_B, MNL_EXT), !.
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%      Bloque Optimizacion Generación-Combinacion Lineal		%%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	generador_esquema_lineal_y_esquemas_no_lineales(LCT, N, ECL, ECL_R, LENL, LENL_R).
+%       -LCT: Lista de Conjuntos de terminos (clausulas de la matriz resuelta) pendientes de procesar
+%       -ECL: Esquema de Conjunto lineal de esta etapa, resultante del procesado de las clausulas lineales tratadas hasta ahora
+%       -ECL_R: Esquema de Conjunto Lineal resultado, resultante del procesado de todas las clausulas lineales de la matriz resuelta
+%       -LENL: Lista de Esquemas de conjunto No Lineales de esta etapa, asociados a las claudulas no lineales tratadas hasta ahora
+%       -LENL_R: Lista de Esquemas de conjunto No Lineales resultado, asociados a todas las clausulas no lineales de la matriz resuelta
+
+generador_esquema_lineal_y_esquemas_no_lineales([], ECL, ECL, LENL, LENL) :- 
+    !.
+
+generador_esquema_lineal_y_esquemas_no_lineales([CT | LCT], ECL, ECL_R, LENL, LENL_R) :-
+    obtener_variables_que_se_repitan(CT, LV), LV \= [], !,
+    copy_term((CT, LV), (NCT, NLV)),
+    maplist(generador_esquema_termino(NLV), NCT, ECNL), 
+    generador_esquema_lineal_y_esquemas_no_lineales(LCT, ECL, ECL_R, [ECNL | LENL], LENL_R).
+
+generador_esquema_lineal_y_esquemas_no_lineales([CT | LCT], [], ECL_R, LENL, LENL_R) :- 
+    !, maplist(generador_esquema_termino([]), CT, ECL),
+    generador_esquema_lineal_y_esquemas_no_lineales(LCT, ECL, ECL_R, LENL, LENL_R).
+
+generador_esquema_lineal_y_esquemas_no_lineales([CT | LCT], ECL, ECL_R, LENL, LENL_R) :- 
+    maplist(combinar_esquemas_lineales_incremental, CT, ECL, NECL), 
+    generador_esquema_lineal_y_esquemas_no_lineales(LCT, NECL, ECL_R, LENL, LENL_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  combinar_esquemas_lineales_incremental(T, E, ER)
+%       -T: Termino a combinar
+%       -E: Esquema a combinar
+%       -ER: Esquema resultante
+combinar_esquemas_lineales_incremental(T, E, ER) :- 
+    var(E), !, generador_esquema_termino([], T, ER).
+
+combinar_esquemas_lineales_incremental(T, EL, EL) :-
+    var(T), !.
+
+combinar_esquemas_lineales_incremental(T, EL, EL) :-
+    T=..[T], !.
+
+combinar_esquemas_lineales_incremental(T, M:EL_P, M:EL_R) :-
+    T=..[_ | L], length(L, N), M > N, !, append(L, _, L_EXT), length(L_EXT, M), !,
+    maplist(combinar_esquemas_lineales_incremental, L_EXT, EL_P, EL_R).
+
+combinar_esquemas_lineales_incremental(T, _:EL_P, N:EL_R) :-
+    T=..[_ | L], length(L, N), append(EL_P, _, EL_P_EXT), length(EL_P_EXT, N), !,
+    maplist(combinar_esquemas_lineales_incremental, L, EL_P_EXT, EL_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	generador_esquema_termino(+LV, +T, -E).
+%       -Lista de Variables Repetidas del conjunto de terinos original
+%		-Termino
+%		-Esquema
+generador_esquema_termino(LV, T, T) :- 
+    aparece(T, LV), !.
+
+generador_esquema_termino(_, T, 0:[]) :- 
+    var(T), !.
+
+generador_esquema_termino(LV, T, N:LSE) :- 
+    T=..[_|LT], length(LT, N), 
+    maplist(generador_esquema_termino(LV), LT, LSE).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%          Bloque Combinacion de Esquemas No Lineales		    %%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  particionar_esquemas_no_lineales(LENL, LPNL, LPNL_R)
+%       -LENL: Lista de esquemas no lineales. Incluyen las clausulas de las que son esquema (L_E_NL-CT_A)
+%       -LPNL: Lista de particiones no lineales resultante del procesado de los esquemas tratados hasta este punto del programa
+%       -L_PNL_R: Lista de particiones no lineales resultado, obtenida del procesado de todos los esquemasde la lista original
+particionar_esquemas_no_lineales([], LPNL, LPNL) :- 
+    !.
+
+particionar_esquemas_no_lineales([ENL | LENL], LPNL, LPNL_R) :-
+    combinar_esquema_no_lineal_con_particiones(ENL, LPNL, LPNL_N),
+    particionar_esquemas_no_lineales(LENL, LPNL_N, LPNL_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  combinar_esquema_no_lineal_con_particiones(E, LP, LP_R)
+%       -ENL: Esquema no lineal
+%       -LP: Lista de particiones
+%       -LP_R: Lista de particiones resultante
+combinar_esquema_no_lineal_con_particiones(E, [], [(E, [])]) :- !.
+
+combinar_esquema_no_lineal_con_particiones(E, [P | LP], [NP | LP]) :-
+    P = (E_P, LCD_P), 
+    term_variables((E_P, E), LV),
+    %combinar_esquemas_no_lineales_conjunto_terminos(LV, E_P, E, E_R, LD_R),
+    maplist(combinar_esquemas_no_lineales_terminos(LV), E_P, E, E_R, LD_R),
+	flatten(LD_R, LD_RF),
+    analizar_dependencias(LV, LCD_P, LD_RF, LCD_I), !, 
+    term_variables(E_R, LV_ER), purgarListaConjuntoDependencias(LV_ER, LCD_I, NLCD_P),
+    NP = (E_R, NLCD_P).
+
+combinar_esquema_no_lineal_con_particiones(E, [P | LP], [P | LPR]) :-
+	combinar_esquema_no_lineal_con_particiones(E, LP, LPR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	combinar_esquemas_no_lineales_conjunto_terminos(LV, E1, E2, ER, LDR).
+%		-LV: Lista Variables
+%		-E1: Esquema 1
+%		-E2: Esquema 2
+%		-ER: Esquema resultado
+%		-LDR: Lista de dependencias resultado
+%combinar_esquemas_no_lineales_conjunto_terminos(LV, E1, E2, ER, LDRF) :-
+%    maplist(combinar_esquemas_no_lineales_terminos(LV), E1, E2, ER, LDRF),
+%	 flatten(LD_R, LD_RF).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	combinar_esquemas_no_lineales_terminos().
+%		-LV: ListaVariables
+%		-E1: Esquema1
+%		-E2: Esquema2
+%		-ER: EsquemaResultado
+%		-DR: DependenciasResultado
+combinar_esquemas_no_lineales_terminos(LV, V1, V2, V1, D) :- 
+    aparece(V1, LV), aparece(V2, LV), !, D = [(V1,V2)].
+
+combinar_esquemas_no_lineales_terminos(LV, V1, V2, V1, []) :- 
+    aparece(V1, LV), var(V2), !.
+
+combinar_esquemas_no_lineales_terminos(LV, V, E, V, DR) :- 
+    aparece(V, LV), !, DR = [(V,E)].
+
+combinar_esquemas_no_lineales_terminos(LV, V1, V2, V2, []) :- 
+    aparece(V2, LV), var(V1), !.
+
+combinar_esquemas_no_lineales_terminos(LV, E, V, V, DR) :- 
+    aparece(V, LV), !, DR = [(V,E)].
+
+%combinar_esquemas_no_lineales_terminos(_, V1, V2, 0:[],  []) :- 
+%    var(V1), var(V2), !.
+
+combinar_esquemas_no_lineales_terminos(_, V, E, E, []) :- 
+    var(V), !.
+
+combinar_esquemas_no_lineales_terminos(_, E, V, E, []) :- 
+    var(V), !.
+
+combinar_esquemas_no_lineales_terminos(LV, N:E1, M:E2, M:ER, DR) :-  
+    M > N, !, append(E1, _, E1R), length(E1R, M), !,
+    maplist(combinar_esquemas_no_lineales_terminos(LV), E1R, E2, ER, DR). 
+
+combinar_esquemas_no_lineales_terminos(LV, N:E1, _:E2, N:ER, DR) :-  
+    append(E2, _, E2R), length(E2R, N), !,
+    maplist(combinar_esquemas_no_lineales_terminos(LV), E1, E2R, ER, DR). 
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%					BLOQUE ANALISIS CICLICIDAD					%%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  analizar_dependencias(LV, LCD, LD, LCD_R).
+%       -LV: Lista de variables a tener en cuenta en el analisis
+%       -LCD: Lista de Conjuntos de Dependencias original
+%       -LD: Lista de dependencias a incorporar
+%       -LCDR: Lista de Conjuntos de Dependencias Resultado
+analizar_dependencias(_, LCD, [], LCD) :- 
+    !.
+
+% Caso en que LD no aporta ninguna dependencia nueva a LCD original
+analizar_dependencias(_, LCD, LD, LCD) :- 
+    maplist(aparece_dependencia_LCD(LCD), LD), !.
+
+
+analizar_dependencias(LV, LCD, LD, LCDR) :-
+    
+    %%  Comprobamos que ninguna nueva dependencia genera ciclos
+    maplist(auto_dependencia, LD),
+
+    %%  Procesamos la lista de dependencias con la regla 1
+    llamada_1(LV, LCD, LD, LCD_R1),
+
+    %%  Una vez se han procesado, volvemos a aplicar la regla 2 de ser posible
+    procesar_regla_R2(LV, LCD_R1, NLD),
+
+    %%  Lanzamos la comprobacion con la llamada recursiva
+    %llamada_2(LV, LCD_R1, NLD, LCDR).
+    analizar_dependencias(LV, LCD_R1, NLD, LCDR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  llamada_1(LV, LCD, LD, LCDR).
+%       -LV: Lista Variables
+%       -LCD: Lista de conjunstos de dependencias
+%       -LD: Lista de dependencais a procesar
+%       -LCDR: Lista de conjunstos de dependencias resultado
+llamada_1(_, LCD, [], LCD) :- !.
+
+llamada_1(_, LCD, LD, LCD) :- %maplist(auto_dependencia, LD),
+    maplist(aparece_dependencia_LCD(LCD), LD), !.
+
+llamada_1(LV, LCD, LD, LCDR) :-
+    
+    %%  Analisis de si las dependencias nuevas son o no "finitas"
+    maplist(auto_dependencia, LD),
+
+    %%  Separacion de las dependencias en dos conjuntos: 
+    %%      -Las que tienen cabeceras ya presentes en LCD: LDF (LD)
+    %%      -Las que no: NLCD_1 (LCD)
+    anadir_dependencias_con_cabecera_nueva(LV, LCD, LD, LDF, [], NLCD_1, [], NLD_1), 
+
+    %%  Añade las dependencias de LDF a LCD aplicandoles R1
+    maplist(combinar_conjunto_dependencias_aplicando_R1(LV, LDF, []), LCD, NLCD_2, NLD_2),
+
+    %%  Combinas Todas las listas de conjuntos de dependencias
+    append(NLCD_1, NLCD_2, NLCD), append(NLD_1, NLD_2, NLD),
+    flatten(NLD, NLDF),
+    llamada_1(LV, NLCD, NLDF, LCDR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	procesar_regla_R2(LV, LCD, LDR).
+%		-LV: Lista Variables
+%		-LCD: Lista de Conjuntos de Dependencias de entrada
+%		-LCDR: Lista de Dependencias resultado
+
+procesar_regla_R2(LV, LCD, LDR) :-
+    %%  Buscamos todas las dependencias de LCD las cuales contienen en su esquema alguna variable, y las añadimos a L_C1B.
+    %%       L_C1B viene de lista de dependencias candidatas 1, en bruto (pendiente de hacer flatten), L_DC1 sera ya una lista de candidatos normal
+    %%  Un candidato se compone de una tupla de la forma: (C1, E, C2), donde: %%POSIBLE CAMBIO, C2 por L_C2
+    %%          -C1 es la variable cabecera de la dependencia que se haya encontrado que si que es candidata
+    %%          -E es el esquema que tenia asociado, el cual contiene a la variable C2
+    maplist(buscar_dependencias_candidatas_1_R2(LV), LCD, L_C1B),
+    flatten(L_C1B, L_C1),
+
+    %%OPCIONAL creo, se podria hacer evitando este paso
+    %%  En este paso, guardamos en una lista (L_CDAC), segun el orden de los candidatos, el Conjunto de Dependencias de LCD al cual pertenece
+    %%  la segunda dependencia que necesitamos para aplicar R2 (w -> E2)
+    %maplist(obtener_CD_asociado(LCD), LC1, L_CDAC),
+
+    %%  Para cada Conjunto de Dependencias de LCD, recorremos las candidatas para, de coincidir con la Cabecera del CD, guardar los esquemas en 
+    %%  una lista dentro de una tupla, con la informacion final del candidato
+    %%  Esta informacion final del candidato se almacenara siguiendo el siguiente formato: (C1, E1, C2, LE2)
+    %%      Dentro de esta, los 3 primeros campos funcinonan igual que antes, y el ultimo es esta lista de esquemas candidatos.
+    
+    maplist(buscar_dependencias_candidatas_2_R2(L_C1), LCD, L_C2B),
+    flatten(L_C2B, L_C2),
+    
+    %%  Ultima fase, aplicamos las sustituciones para llegar a una dependencia
+    maplist(sustituir_dependencias, L_C2, LDR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%	auto_dependencia(D).
+%		-Dependencia: (Cabeza, Esquema asociado).
+auto_dependencia(D) :- 
+    D = (_, E), var(E), !.
+auto_dependencia(D) :- 
+    D = (C, E), term_variables(E, L), no_aparece(C, L).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%			BLOQUE HERRAMIENTAS CONJUNTOS DEPENDENCIAS			%%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  operar(LV, E1, E2, DR): A partir de dos esquemas
+%       -LV: Lista de Variables
+%       -E1: Esquema numero 1
+%       -E2: Esquema numero 2
+%       -DR: Dependencia resultante
+operar(LV, V, E, (V, E)) :- aparece(V, LV), !.
+       
+operar(LV, E, V, (V, E)) :- aparece(V, LV), !.    
+
+operar(LV, N:E1, M:E2, DR) :- 
+    combinar_esquemas_no_lineales_terminos(LV, N:E1, M:E2, _, DRC),
+    MIN is min(N,M),
+    length(DR, MIN), 
+    append(DR, _, DRC).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    
+%%  anadir_dependencias_con_cabecera_nueva(LV , LCD, LD, LDF, PLCD, NLCD, PLD, NLD).
+%       -LV: Lista de variables
+%       -LCD: Lista de conjunto de dependencias original
+%       -LD: Lista de dependencias a añadir
+%       -LDF: lista de dependencia a añadir con cabezas ya presentes en LCD 
+%       -PLCD: LIsta de conjunto de dependencias con las dependencias procesadas hasta esta ejecucion
+%       -LCDR: Lista de conjunto de dependencias con los todas las dependencias ya procesadas
+anadir_dependencias_con_cabecera_nueva(_, _, [], [], LCD, LCD , LD, LD) :- !.
+
+anadir_dependencias_con_cabecera_nueva(LV, LCD, [(C, Esquema) | DR], [(C, Esquema) | DRF], PLCD, LCDR, PLD, LDR) :-
+    aparece_cabecera_dependencia_LCD(C, LCD), !, 
+    anadir_dependencias_con_cabecera_nueva(LV, LCD, DR, DRF, PLCD, LCDR, PLD, LDR).
+
+anadir_dependencias_con_cabecera_nueva(LV, LCD, [(C, Esquema) | DR], LDF, PLCD, LCDR, PLD, LDR) :-
+    aparece_cabecera_dependencia_LCD(C, PLCD), !, 
+    completar_dependencias_aplicando_R1(LV, (C, Esquema), PLCD, NLCD, PLD, NLD), 
+    anadir_dependencias_con_cabecera_nueva(LV, LCD, DR, LDF, NLCD, LCDR, NLD, LDR).
+
+anadir_dependencias_con_cabecera_nueva(LV, LCD, [(C, Esquema) | DR], LDF, PLCD, LCDR, LD, LDR) :-
+    anadir_dependencias_con_cabecera_nueva(LV, LCD, DR, LDF, [(C, [Esquema]) | PLCD], LCDR, LD, LDR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  combinar_conjunto_dependencias_aplicando_R1(LV, Dependencias, PDR, ConjuntoDependencias, NuevoConjuntoDependencias, DResultantes).
+%       -Lista Variables
+%       -Dependencias: Lista Dependencias a combinar y procesar
+%       -PDR: Lista de dependencias generadas por R1 hasta esta itereacion
+%       -ConjuntoDependencias: Conjunto de Dependencias hasta esta ejecucion
+%       -NuevoConjuntoDependencias: Conjunto de dependencias que quedara tras el procesado de la actual dependencia
+%       -DResultantes: Dependencias resultantes de añadir el procesado de la actual con el conjunto ya existente por medio de R1
+combinar_conjunto_dependencias_aplicando_R1(_, [], DR, CD, CD, DRF) :- 
+    !, flatten(DR, DRF).
+
+combinar_conjunto_dependencias_aplicando_R1(LV, [(Cabecera, Esquema) | DRestantes], PDR, CD, NCD, DR) :-
+    CD = (C, LED), Cabecera == C, aparece(Esquema, LED), !, 
+    combinar_conjunto_dependencias_aplicando_R1(LV, DRestantes, PDR, CD, NCD, DR).
+    
+combinar_conjunto_dependencias_aplicando_R1(LV, [(Cabecera, Esquema) | DRestantes], PDR, CD, (K, [Esquema | NCD]), DR) :-
+    CD = (C, LED), Cabecera == C, !, 
+    %maplist(aplicar_regla_R1_duo(LV, Esquema), LED, Resultado),
+    maplist(operar(LV, Esquema), LED, Resultado), append(Resultado, PDR, NDR),    
+    combinar_conjunto_dependencias_aplicando_R1(LV, DRestantes, NDR, CD, (K, NCD), DR).
+
+combinar_conjunto_dependencias_aplicando_R1(LV, [_ | DRestantes],  PDR, CD, NCD, DR) :-
+    combinar_conjunto_dependencias_aplicando_R1(LV, DRestantes,  PDR, CD, NCD, DR).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  completar_dependencias_aplicando_R1(LV, D, LCD, LCDR, LD, LDR).
+%       -LV: Lista de variables
+%		-D: Dependencia(Cabeza, Esquema asociado)
+%		-LCD: Lista de Conjuntos de Dependencias Inicial
+%		-LCDR: Lista de Conjuntos de Dependencias Resultado
+%		-LD: Lista de Dependencias de Entrada
+%		-LDR: Lista de Dependencias actualizada para contener las recien procesadas
+completar_dependencias_aplicando_R1(_, (C_D, E_D), [], [(C_D, [E_D])], LD, LD) :- !.
+
+completar_dependencias_aplicando_R1(_, (C_D, E_D), [(C, LE)|LCD_R], [(C, LE)|LCD_R], LD, LD) :-
+    C == C_D, aparece(E_D, LE), !.
+    
+completar_dependencias_aplicando_R1(LV, (C_D, E_D), [(C, LE)|LCD_R], [(C, [E_D | LE])|LCD_R], PLD, LD_R) :-
+    C == C_D, !, maplist(operar(LV, E_D), LE, NLD), append(PLD, NLD, LD_R).
+
+completar_dependencias_aplicando_R1(LV, D, [CD | LCD_R], [CD | NLCD_R], PLD, LD_R) :- 
+    !, completar_dependencias_aplicando_R1(LV, D, LCD_R, NLCD_R, PLD, LD_R).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  buscar_dependencias_candidatas_1_R2(LV, CD, LC_R) :-
+%       -LV: Lista de Variables %%TODO ojo que aqui LV podria ser la lista de cabeceras de LCD !!!!!!!!!!!!!!!
+%       -CD: Conjunto de dependencias (C, LE)
+%       -LC_R: Lista de Candidatos resultado
+
+buscar_dependencias_candidatas_1_R2(LV, (C, LE), LC_R) :-
+    maplist(evaluar_dependencia_candida_1_R2(LV, C), LE, LC_R).
+
+%%  evaluar_dependencia_candida_1_R2(LV, C, E, LCR).
+evaluar_dependencia_candida_1_R2(LV, C, V, (C, V, V)) :- 
+    aparece(V, LV), !.
+
+evaluar_dependencia_candida_1_R2(_, C, E, LCR) :-
+    term_variables(E, LV), maplist(construir_candidatos_1(C, E), LV, LCR).
+
+%%  construir_candidatos_1(C, E, V, CR).
+construir_candidatos_1(C, E, V, (C, E, V)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  buscar_dependencias_candidatas_2_R2(LC, CD, LC2_R),
+buscar_dependencias_candidatas_2_R2(LC, CD, LC2_R) :-
+    maplist(evaluar_dependencia_candida_2_R2(CD), LC, LC2_R).
+
+evaluar_dependencia_candida_2_R2(CD, C, LC2_R) :-
+    C = (_, _, V), CD = (C2, LE), C2 == V, !, 
+    maplist(construir_candidatos_2(C), LE, LC2_R).
+
+evaluar_dependencia_candida_2_R2(_, _, []).
+
+%%  construir_candidatos_2(Can1, E2, Can2).
+construir_candidatos_2((C1, E1, V), E2, (C1, E1, V, E2)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  sustituir_dependencias(C, DR).
+sustituir_dependencias((C1, E1, C2, E2), (C1, ER)) :-
+    sustituir_esquema(C2, E2, E1, ER).
+
+%%  sustituir_esquema(V, ES, E, ER).
+%       -E: Esquema a recorrer
+%       -V:
+%       -ES:
+%       -ER:
+sustituir_esquema(V, ER, E, ER) :- 
+    E == V, !.
+
+sustituir_esquema(V, ES, N:E, N:ER) :- 
+    maplist(sustituir_esquema(V, ES), E, ER).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  aparece_cabecera_dependencia_LCD(Cabecera, ListaConjutoDependencias)
+aparece_cabecera_dependencia_LCD(C, [(D_C,_) | _]) :- 
+    D_C == C, !.
+aparece_cabecera_dependencia_LCD(C, [_ | DL]) :- 
+    aparece_cabecera_dependencia_LCD(C, DL).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+aparece_dependencia_LCD([(CD_C, CD_LE) | _], (D_C, D_E)) :- 
+    CD_C == D_C, !, aparece(D_E, CD_LE).
+
+aparece_dependencia_LCD([_ | LCD_R], D) :- 
+    aparece_dependencia_LCD(LCD_R, D). 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+purgarListaConjuntoDependencias(_, [], []):- !.    
+
+purgarListaConjuntoDependencias(LV, [(H, CD)|LCD], [(H,NCD)|NLCD]):-
+    aparece(H, LV), !, purgarConjuntoDependencias(LV, CD, NCD),
+    purgarListaConjuntoDependencias(LV, LCD, NLCD).
+
+purgarListaConjuntoDependencias(LV, [(_, _)|LCD], NLCD):-
+    purgarListaConjuntoDependencias(LV, LCD, NLCD).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+purgarConjuntoDependencias(_, [], []):- !.
+
+purgarConjuntoDependencias(LV, [D | LD], [D | NLD]):- 
+    term_variables(D, []), !,
+    purgarConjuntoDependencias(LV, LD, NLD).
+    
+purgarConjuntoDependencias(LV, [D | LD], [D | NLD]):- 
+    term_variables(D, LVT), maplist(taponar(LV), LVT, LVT), 
+    purgarConjuntoDependencias(LV, LD, NLD).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+taponar(LV, V, V) :- aparece(V, LV), !.
+taponar(_, _, 0:[]).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%  			        BLOQUE DE EXTENSION			            %%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  extender_clausulas(ELC, L_P_NL, M, ML, ML_R, MNL, MNL_R).
+
+extender_clausulas(ELC, L_P_NL, [], ML_R_, (ML_R, ELC), MNL_R_, MNL_R) :- !, 
+    conversor_lista_diferencia(ML_R_, ML_R), 
+    maplist(conversor_lista_diferencia_, L_P_NL, MNL_R_, MNL_R).
+
+extender_clausulas(ELC, L_P_NL, [C | M], ML, ML_R, MNL, MNL_R) :- 
+    obtener_variables_que_se_repitan(C, LV), LV = [], !,
+    maplist(extender_termino([], [], []), ELC, C, C_EXT_), flatten(C_EXT_, C_EXT),
+    add_last_lista_diferencia(ML, C_EXT, N_ML),
+    extender_clausulas(ELC, L_P_NL, M, N_ML, ML_R, MNL, MNL_R).
+
+extender_clausulas(ELC, L_P_NL, [C | M], ML, ML_R, MNL, MNL_R) :- 
+    obtener_variables_que_se_repitan(C, LV), 
+    maplist(generador_esquema_termino(LV), C, ECNL), 
+    extender_clausula_no_lineal(C, ECNL, L_P_NL, MNL, N_MNL),
+    extender_clausulas(ELC, L_P_NL, M, ML, ML_R, N_MNL, MNL_R).  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  extender_clausula_no_lineal(C, ECNL, L_P_NL, ML, N_ML).
+extender_clausula_no_lineal(C, ECNL, [P | _], [MNL_P | R], [N_MNL_P | R]) :-
+    P = (E_P, LCD_P), term_variables((E_P, ECNL), LV),
+    %combinar_esquemas_no_lineales_conjunto_terminos(LV, ECNL, E_P, E_R, LD_R),
+    maplist(combinar_esquemas_no_lineales_terminos(LV), ECNL, E_P, E_R, LD_R),
+	flatten(LD_R, LD_RF),
+
+    analizar_dependencias(LV, LCD_P, LD_RF, NLCD), !, 
+    obtener_variables_que_se_repitan(C, LV_C),
+    maplist(extender_variable(NLCD), LV_C, LV_C_Ext),
+    maplist(extender_termino(LV_C, LV_C_Ext, NLCD), E_R, C, C_EXT_), flatten(C_EXT_, C_EXT),
+    add_last_lista_diferencia(MNL_P, C_EXT, N_MNL_P).
+
+extender_clausula_no_lineal(C, ECNL, [_ | L_P_NL], [MNL_P | R], [MNL_P | N_R]) :-
+    extender_clausula_no_lineal(C, ECNL, L_P_NL, R, N_R), !.
+
+extender_clausula_no_lineal(C, _, [], _, _) :- 
+    !, write("DURANTE LA EXTENSION HAY UNA CLAUSULA NO LINEAL INCOMPATIBLE CON NINGUN ESQUEMA NO LINEAL."), 
+    write(C), fail. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  dependencia_de_mayor_tamaño(+LCD, +V, -EF): EF es el esquema de la dependencia de V de mayor tamaño que este presente en LCD
+dependencia_de_mayor_tamaño(LCD, V, NEF) :-
+    dmt_inmersivo_1(V, LCD, 0:[], 0, EF),
+    expandir_variables_esquema(LCD, EF, NEF).
+
+dmt_inmersivo_1(_, [], EF, _, EF) :- !.
+
+dmt_inmersivo_1(V, [(H, CD) | _], ES, TES, EF) :-
+    V == H, !, dmt_inmersivo_2(CD, ES, TES, EF).
+
+dmt_inmersivo_1(V, [_ | LCD], ES, TES, EF) :-
+    dmt_inmersivo_1(V, LCD, ES, TES, EF).
+
+dmt_inmersivo_2([], EF, _, EF) :- !.
+
+dmt_inmersivo_2([E | CD], _, TES, EF) :-
+    size(E, TE), TE > TES, !, 
+    dmt_inmersivo_2(CD, E, TE, EF).
+
+dmt_inmersivo_2([_ | CD], ES, TES, EF) :-
+    dmt_inmersivo_2(CD, ES, TES, EF).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  expandir_variables_esquema(+LCD, +EF, -NEF): NEF es el esquema EF donde cada variable que aparece en el ha sido sustituida por 
+%%                                         el esquema de su dependencia de mayor tamaño asociada
+expandir_variables_esquema(_, EF, EF):- 
+    term_variables(EF, []), !.
+
+expandir_variables_esquema(LCD, EF, NEF):-
+    term_variables(EF, LV), 
+    maplist(dependencia_de_mayor_tamaño(LCD), LV, LE),
+    copy_term((EF, LV), (NEF, LE)).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% extender_variable(LCD, V, NV)
+extender_variable(LCD, V, NV) :-
+    dependencia_de_mayor_tamaño(LCD, V, EDMT), 
+    size(EDMT, Size), length(NV, Size), NV = [V|_].
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  extender_termino(LV, NLV, LCD, E, T, TEX)
+extender_termino(LV, NLV, LCD, E, T, TEX) :-
+    var(E), !, 
+    dependencia_de_mayor_tamaño(LCD, E, NE),
+    extender_termino(LV, NLV, LCD, NE, T, TEX).
+
+extender_termino(LV, NLV, _, _, T, TEX) :-
+    aparece(T, LV), !, 
+    buscar(T, LV, TEX, NLV).
+
+extender_termino(LV, NLV, _, E, T, [T | E_EXT]) :-
+    var(T), !, 
+    copy_term((E, LV), (_:NE, NLV)),
+    maplist(extension_esquema, NE, E_EXT).
+
+extender_termino(LV, NLV, LCD, N:LE, T, [F | T_EXT]) :-
+    T=..[F|LT], length(LT, M), M < N, !,
+    
+    length(MLE, M), append(MLE, NLE, LE),
+
+    maplist(extender_termino(LV, NLV, LCD), MLE, LT, LT_EXT),
+
+    copy_term((NLE, LV), (E, NLV)),
+    maplist(extension_esquema, E, NLE_EXT),
+
+    append(LT_EXT, NLE_EXT, T_EXT).
+
+extender_termino(LV, NLV, LCD, _:LE, T, [F|T_EXT]) :-
+    T=..[F|LT], 
+    maplist(extender_termino(LV, NLV, LCD), LE, LT, T_EXT).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+extension_esquema(E, E_EXT) :-    
+    size(E, S), length(E_EXT, S).
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%																%%
+                                        %%				Bloque Herramientas Generalales					%%
+                                        %%																%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%  aparece(+E, +L): comprueba si alguno de los elementos de L es igual (==) que E.
+aparece(E, [H|_]) :- H == E, !.
+aparece(E, [_|R]) :- aparece(E, R).
+
+%%  no_aparece(+E, +L): comprueba que todos los elementos de L son distintos (\==) a E.
+no_aparece(_, []):- !.
+no_aparece(E, [H|R]) :- H \== E, !, no_aparece(E, R).
+
+%%   obtener_variables_que_se_repitan(+E, ?LV): LV es una lista que contiene a todas las variables
+%%      que aparecen repetidas en E
+obtener_variables_que_se_repitan(E, LV) :- 
+    term_variables(E, T), 
+    term_singletons(E, S), 
+    diferencia(T, S, LV).
+
+%%  diferencia(+C1, +C2, -CR): CR es el conjunto formado por la diferencia entre los conjuntos C1 y C2.
+%%      Todo elemento que aparece en C1 pero no aparece en C2 estara en CR
+diferencia([], _, []) :- !.
+diferencia([H|T], L, [H|R]) :- no_aparece(H, L), !, diferencia(T, L, R).
+diferencia([_|T], L, R) :-  diferencia(T, L, R).
+
+%%	purgar(-L, NL): NL es la lista L eliminando todas las apariciones de listas vacias ("[]") que haya de esta.
+purgar([],[]).
+purgar([[]|L], NL) :- !, purgar(L, NL).
+purgar([H|L],[H|NL]) :- purgar(L, NL).
+
+
+%%  size(+E, -SR): SR es el tamaño del esquema E, SE .
+size(E, SR) :- 
+    size_inmersion(E, 0, SR).
+
+size_inmersion(V, SE, SR) :- 
+    var(V), !, SR is SE + 1.
+
+size_inmersion(_:[], SE, SR) :- 
+    !, SR is SE + 1.
+
+size_inmersion(A:[H|LE], SE, SR):- 
+    size_inmersion(H, SE, SI),
+    size_inmersion(A:LE, SI, SR).
+
+
+% inicializar_lista_dif(-LD): Devuelve una lista diferencia inicializada como vacia.
+inicializar_lista_dif(T-T).
+
+%%  % aniadir_elemento(+LD, +E, -NLD): Añade un elemento como cola de una lista diferencia dada
+%       -LD es una lista diferencia existente.
+%       -E es el elemento a añadir.
+%       -NLD es la nueva lista diferencia resultante.
+add_last_lista_diferencia(L-T, E, L-NT) :-
+    T = [E | NT].
+
+%%  conversor_lista_diferencia(+LD, -L): Convierte la lista diferencia dada en una lista normal
+conversor_lista_diferencia(L-T, L) :-
+    T = [].
+
+conversor_lista_diferencia_((E, _), L-T, (L, E)) :-
+    T = [].
+
+buscar(_, [], 0:[], []) :- !.
+buscar(T, [H | _], TEX, [TEX | _]) :-
+    H == T, !.
+
+buscar(T, [_| LV], TEX, [_ | NLV]) :-
+    buscar(T, LV, TEX, NLV).
+
+
+    
